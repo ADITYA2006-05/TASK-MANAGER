@@ -4,54 +4,60 @@ import os
 from datetime import date
 import pandas as pd
 
-# --- CONFIG & READABLE UI STYLING ---
-st.set_page_config(page_title="Task Tracker for Daily Life", page_icon="🌿", layout="centered")
+# --- CONFIG & HIGH-VISIBILITY STYLING ---
+st.set_page_config(page_title="Task Tracker for Daily Life", page_icon="📝", layout="centered")
 
 st.markdown("""
     <style>
-    /* Calming Light Background */
+    /* 1. Main Background - Light & Pleasant */
     .stApp {
         background-color: #F0F4F8;
     }
     
-    /* Main Text - Dark Charcoal for visibility */
-    .stApp, p, span, label {
+    /* 2. FORCE DARK TEXT EVERYWHERE */
+    .stApp, p, span, label, .stMarkdown {
         color: #1A202C !important;
         font-weight: 500;
     }
     
-    /* Headers - Deep Blue/Black */
-    h1, h2, h3 {
-        color: #2D3748 !important;
-        font-weight: 700 !important;
+    /* 3. INPUT BOXES - WHITE Background with BLACK Text */
+    input, textarea, [data-baseweb="input"] {
+        background-color: #FFFFFF !important;
+        color: #000000 !important;
+        border: 2px solid #CBD5E0 !important;
+        border-radius: 8px !important;
+    }
+    
+    /* Fix for text inside the input being visible */
+    input {
+        color: #000000 !important;
+        -webkit-text-fill-color: #000000 !important;
     }
 
-    /* Soft Cards for Tasks */
-    .stCheckbox {
-        background-color: #FFFFFF;
-        padding: 10px;
-        border-radius: 8px;
-        border: 1px solid #CBD5E0;
-        margin-bottom: 5px;
+    /* 4. SIDEBAR - White with Dark Text */
+    section[data-testid="stSidebar"] {
+        background-color: #FFFFFF !important;
+        border-right: 2px solid #E2E8F0;
+    }
+    section[data-testid="stSidebar"] * {
+        color: #1A202C !important;
     }
 
-    /* Primary Action Buttons */
+    /* 5. TABS - Higher Contrast */
+    button[data-baseweb="tab"] {
+        color: #4A5568 !important;
+    }
+    button[data-baseweb="tab"][aria-selected="true"] {
+        color: #2B6CB0 !important;
+        border-bottom-color: #2B6CB0 !important;
+    }
+
+    /* 6. BUTTONS */
     .stButton>button {
         background-color: #2B6CB0;
         color: #FFFFFF !important;
         border-radius: 10px;
         font-weight: bold;
-    }
-    
-    /* Success Metric - Bold Dark Green */
-    [data-testid="stMetricValue"] {
-        color: #22543D !important;
-        font-weight: 800;
-    }
-
-    /* Input Fields */
-    input {
-        color: #000000 !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -67,17 +73,16 @@ def load_data(file):
 def save_data(file, data):
     with open(file, "w") as f: json.dump(data, f, indent=4)
 
-# --- SESSION STATE ---
+# --- APP LOGIC ---
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
 
-# --- AUTH UI ---
 if not st.session_state.logged_in:
-    st.markdown("<h1 style='text-align: center;'>Task Tracker for Daily Life</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align: center; color: #2B6CB0;'>Task Tracker for Daily Life</h1>", unsafe_allow_html=True)
     tab1, tab2 = st.tabs(["Login", "Register"])
     with tab1:
-        u = st.text_input("Username")
-        p = st.text_input("Password", type="password")
+        u = st.text_input("Username", key="login_u")
+        p = st.text_input("Password", type="password", key="login_p")
         if st.button("Sign In"):
             users = load_data(USER_DB)
             if u in users and users[u] == p:
@@ -85,17 +90,17 @@ if not st.session_state.logged_in:
                 st.rerun()
             else: st.error("Incorrect details.")
     with tab2:
-        nu, np = st.text_input("New Username"), st.text_input("New Password", type="password")
+        nu = st.text_input("New Username", key="reg_u")
+        np = st.text_input("New Password", type="password", key="reg_p")
         if st.button("Create Account"):
             users = load_data(USER_DB)
             if nu and np:
                 users[nu] = np
                 save_data(USER_DB, users)
                 st.success("Account created!")
-
-# --- MAIN APP UI ---
 else:
-    st.markdown("<h1 style='text-align: center;'>Task Tracker for Daily Life</h1>", unsafe_allow_html=True)
+    # --- MAIN DASHBOARD ---
+    st.markdown("<h1 style='text-align: center; color: #2B6CB0;'>Task Tracker for Daily Life</h1>", unsafe_allow_html=True)
     st.write(f"Logged in as: **{st.session_state.user}** | 📅 {date.today().strftime('%A, %b %d')}")
 
     all_data = load_data(DATA_DB)
@@ -105,6 +110,7 @@ else:
 
     with t1:
         st.subheader("Today's Objectives")
+        # High visibility input
         new_task = st.text_input("What is your top priority today?", key="d_in")
         if st.button("Add Task") and new_task:
             user_data["daily"].append({"name": new_task, "done": False})
@@ -124,12 +130,15 @@ else:
         st.divider()
         for i, t in enumerate(user_data["daily"]):
             col1, col2, col3 = st.columns([0.1, 0.8, 0.1])
-            if col1.checkbox("", value=t['done'], key=f"d_{i}"):
-                user_data["daily"][i]['done'] = True
-            else: user_data["daily"][i]['done'] = False
+            checked = col1.checkbox("", value=t['done'], key=f"d_{i}")
+            if checked != t['done']:
+                user_data["daily"][i]['done'] = checked
+                all_data[st.session_state.user] = user_data
+                save_data(DATA_DB, all_data)
+                st.rerun()
             
-            # Use Dark Grey for normal, Gray for strikethrough
-            label = f"<span style='color: #718096; text-decoration: line-through;'>{t['name']}</span>" if t['done'] else f"<span style='color: #000000; font-weight: bold;'>{t['name']}</span>"
+            # Using absolute black for task names
+            label = f"<span style='color: #718096; text-decoration: line-through;'>{t['name']}</span>" if t['done'] else f"<span style='color: #000000; font-weight: bold; font-size: 18px;'>{t['name']}</span>"
             col2.markdown(label, unsafe_allow_html=True)
             
             if col3.button("🗑️", key=f"del_{i}"):
@@ -137,15 +146,10 @@ else:
                 all_data[st.session_state.user] = user_data
                 save_data(DATA_DB, all_data)
                 st.rerun()
-        
-        # Save historical progress
-        user_data["history"][str(date.today())] = pct
-        all_data[st.session_state.user] = user_data
-        save_data(DATA_DB, all_data)
 
     with t2:
         st.subheader("Monthly Milestones")
-        m_in = st.text_input("New goal for this month")
+        m_in = st.text_input("New goal for this month", key="m_in_box")
         if st.button("Set Goal") and m_in:
             user_data["monthly"].append(m_in)
             save_data(DATA_DB, all_data)
@@ -154,7 +158,7 @@ else:
 
     with t3:
         st.subheader("Yearly Vision")
-        y_in = st.text_input("Big goal for the year")
+        y_in = st.text_input("Big goal for the year", key="y_in_box")
         if st.button("Set Vision") and y_in:
             user_data["yearly"].append(y_in)
             save_data(DATA_DB, all_data)
