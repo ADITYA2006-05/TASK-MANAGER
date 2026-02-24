@@ -2,13 +2,64 @@ import streamlit as st
 import json
 import os
 from datetime import date
+import pandas as pd
 
-# --- FILE PATHS ---
-USER_DB = "users.json"
-# We store tasks in a separate file or could combine them
-TASK_DB = "tasks_data.json" 
+# --- CONFIG & READABLE UI STYLING ---
+st.set_page_config(page_title="Task Tracker for Daily Life", page_icon="🌿", layout="centered")
+
+st.markdown("""
+    <style>
+    /* Calming Light Background */
+    .stApp {
+        background-color: #F0F4F8;
+    }
+    
+    /* Main Text - Dark Charcoal for visibility */
+    .stApp, p, span, label {
+        color: #1A202C !important;
+        font-weight: 500;
+    }
+    
+    /* Headers - Deep Blue/Black */
+    h1, h2, h3 {
+        color: #2D3748 !important;
+        font-weight: 700 !important;
+    }
+
+    /* Soft Cards for Tasks */
+    .stCheckbox {
+        background-color: #FFFFFF;
+        padding: 10px;
+        border-radius: 8px;
+        border: 1px solid #CBD5E0;
+        margin-bottom: 5px;
+    }
+
+    /* Primary Action Buttons */
+    .stButton>button {
+        background-color: #2B6CB0;
+        color: #FFFFFF !important;
+        border-radius: 10px;
+        font-weight: bold;
+    }
+    
+    /* Success Metric - Bold Dark Green */
+    [data-testid="stMetricValue"] {
+        color: #22543D !important;
+        font-weight: 800;
+    }
+
+    /* Input Fields */
+    input {
+        color: #000000 !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
 # --- DATA HELPERS ---
+USER_DB = "users.json"
+DATA_DB = "planner_data.json"
+
 def load_data(file):
     if not os.path.exists(file): return {}
     with open(file, "r") as f: return json.load(f)
@@ -16,113 +67,106 @@ def load_data(file):
 def save_data(file, data):
     with open(file, "w") as f: json.dump(data, f, indent=4)
 
-# --- APP SETUP ---
-st.set_page_config(page_title="Sa's Tracker", page_icon="🚀")
-
+# --- SESSION STATE ---
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
-if 'user' not in st.session_state:
-    st.session_state.user = ""
 
-# --- AUTHENTICATION UI ---
+# --- AUTH UI ---
 if not st.session_state.logged_in:
+    st.markdown("<h1 style='text-align: center;'>Task Tracker for Daily Life</h1>", unsafe_allow_html=True)
     tab1, tab2 = st.tabs(["Login", "Register"])
-    
     with tab1:
-        u_login = st.text_input("Username")
-        p_login = st.text_input("Password", type="password")
-        if st.button("Log In"):
+        u = st.text_input("Username")
+        p = st.text_input("Password", type="password")
+        if st.button("Sign In"):
             users = load_data(USER_DB)
-            if u_login in users and users[u_login] == p_login:
-                st.session_state.logged_in = True
-                st.session_state.user = u_login
+            if u in users and users[u] == p:
+                st.session_state.logged_in, st.session_state.user = True, u
                 st.rerun()
-            else:
-                st.error("Invalid Username/Password")
-
+            else: st.error("Incorrect details.")
     with tab2:
-        u_reg = st.text_input("New Username")
-        p_reg = st.text_input("New Password", type="password")
+        nu, np = st.text_input("New Username"), st.text_input("New Password", type="password")
         if st.button("Create Account"):
             users = load_data(USER_DB)
-            if u_reg in users:
-                st.error("User already exists!")
-            elif u_reg and p_reg:
-                users[u_reg] = p_reg
+            if nu and np:
+                users[nu] = np
                 save_data(USER_DB, users)
-                st.success("Registration successful! Go to Login tab.")
-            else:
-                st.warning("Please enter details.")
+                st.success("Account created!")
 
-# --- MAIN TRACKER UI ---
+# --- MAIN APP UI ---
 else:
-    # Sidebar for logout and adding tasks
-    st.sidebar.title(f"👤 {st.session_state.user}")
+    st.markdown("<h1 style='text-align: center;'>Task Tracker for Daily Life</h1>", unsafe_allow_html=True)
+    st.write(f"Logged in as: **{st.session_state.user}** | 📅 {date.today().strftime('%A, %b %d')}")
+
+    all_data = load_data(DATA_DB)
+    user_data = all_data.get(st.session_state.user, {"daily": [], "monthly": [], "yearly": [], "history": {}})
+
+    t1, t2, t3, t4 = st.tabs(["☀️ Daily", "📅 Monthly", "🏆 Yearly", "📊 Progress"])
+
+    with t1:
+        st.subheader("Today's Objectives")
+        new_task = st.text_input("What is your top priority today?", key="d_in")
+        if st.button("Add Task") and new_task:
+            user_data["daily"].append({"name": new_task, "done": False})
+            all_data[st.session_state.user] = user_data
+            save_data(DATA_DB, all_data)
+            st.rerun()
+
+        done = sum(1 for t in user_data["daily"] if t['done'])
+        total = len(user_data["daily"])
+        pct = (done/total*100) if total > 0 else 0
+        
+        c1, c2 = st.columns(2)
+        c1.metric("Completed", f"{done}/{total}")
+        c2.metric("Success Rate", f"{pct:.0f}%")
+        st.progress(pct/100)
+
+        st.divider()
+        for i, t in enumerate(user_data["daily"]):
+            col1, col2, col3 = st.columns([0.1, 0.8, 0.1])
+            if col1.checkbox("", value=t['done'], key=f"d_{i}"):
+                user_data["daily"][i]['done'] = True
+            else: user_data["daily"][i]['done'] = False
+            
+            # Use Dark Grey for normal, Gray for strikethrough
+            label = f"<span style='color: #718096; text-decoration: line-through;'>{t['name']}</span>" if t['done'] else f"<span style='color: #000000; font-weight: bold;'>{t['name']}</span>"
+            col2.markdown(label, unsafe_allow_html=True)
+            
+            if col3.button("🗑️", key=f"del_{i}"):
+                user_data["daily"].pop(i)
+                all_data[st.session_state.user] = user_data
+                save_data(DATA_DB, all_data)
+                st.rerun()
+        
+        # Save historical progress
+        user_data["history"][str(date.today())] = pct
+        all_data[st.session_state.user] = user_data
+        save_data(DATA_DB, all_data)
+
+    with t2:
+        st.subheader("Monthly Milestones")
+        m_in = st.text_input("New goal for this month")
+        if st.button("Set Goal") and m_in:
+            user_data["monthly"].append(m_in)
+            save_data(DATA_DB, all_data)
+            st.rerun()
+        for g in user_data["monthly"]: st.info(f"📅 {g}")
+
+    with t3:
+        st.subheader("Yearly Vision")
+        y_in = st.text_input("Big goal for the year")
+        if st.button("Set Vision") and y_in:
+            user_data["yearly"].append(y_in)
+            save_data(DATA_DB, all_data)
+            st.rerun()
+        for g in user_data["yearly"]: st.warning(f"🏆 {g}")
+
+    with t4:
+        st.subheader("Performance History")
+        if user_data["history"]:
+            df = pd.DataFrame(list(user_data["history"].items()), columns=['Date', 'Success%'])
+            st.line_chart(df.set_index('Date'))
+
     if st.sidebar.button("Logout"):
         st.session_state.logged_in = False
-        st.rerun()
-
-    st.title("✅ Daily Task Tracker")
-    st.write(f"Today is: **{date.today().strftime('%A, %B %d')}**")
-
-    # Load tasks for THIS specific user
-    all_tasks = load_data(TASK_DB)
-    user_tasks = all_tasks.get(st.session_state.user, [])
-
-    # ADD TASKS SECTION
-    with st.expander("➕ Add a New Task"):
-        t_name = st.text_input("Task Description")
-        if st.button("Add Task"):
-            if t_name:
-                user_tasks.append({"name": t_name, "done": False})
-                all_tasks[st.session_state.user] = user_tasks
-                save_data(TASK_DB, all_tasks)
-                st.rerun()
-
-    # SUCCESS CALCULATION
-    total = len(user_tasks)
-    done = sum(1 for t in user_tasks if t['done'])
-    pct = (done / total * 100) if total > 0 else 0
-
-    st.divider()
-    
-    # Progress Bar & Metric
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        st.progress(pct / 100)
-    with col2:
-        st.metric("Success", f"{pct:.0f}%")
-
-    # TASK LIST DISPLAY
-    st.subheader("Your Tasks")
-    if not user_tasks:
-        st.info("No tasks yet. Add one above!")
-    else:
-        for i, task in enumerate(user_tasks):
-            col_check, col_text, col_del = st.columns([0.1, 0.8, 0.1])
-            
-            # Checkbox to complete
-            checked = col_check.checkbox("", value=task['done'], key=f"chk_{i}")
-            if checked != task['done']:
-                user_tasks[i]['done'] = checked
-                all_tasks[st.session_state.user] = user_tasks
-                save_data(TASK_DB, all_tasks)
-                st.rerun()
-            
-            # Text display
-            if task['done']:
-                col_text.write(f"~~{task['name']}~~")
-            else:
-                col_text.write(task['name'])
-            
-            # Delete button
-            if col_del.button("🗑️", key=f"del_{i}"):
-                user_tasks.pop(i)
-                all_tasks[st.session_state.user] = user_tasks
-                save_data(TASK_DB, all_tasks)
-                st.rerun()
-
-    if st.button("Reset List for Tomorrow"):
-        all_tasks[st.session_state.user] = []
-        save_data(TASK_DB, all_tasks)
         st.rerun()
